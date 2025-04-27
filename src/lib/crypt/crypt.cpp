@@ -22,7 +22,7 @@ namespace crypto
 
 OctetString CalculatePrfPrime(const OctetString &key, const OctetString &input, int outputLength)
 {
-    if (key.length() != 32)
+    if (key.length() != 32 && key.length() != 64)
         throw std::runtime_error("CalculatePrfPrime, 256-bit key expected");
 
     int round = outputLength / 32 + 1;

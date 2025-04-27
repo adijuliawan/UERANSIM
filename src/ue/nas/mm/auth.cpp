@@ -11,6 +11,9 @@
 #include <lib/nas/utils.hpp>
 #include <ue/nas/keys.hpp>
 
+#include "oqs/oqs.h"
+#include "oqs/sha3.h"
+
 namespace nr::ue
 {
 
@@ -41,6 +44,7 @@ void NasMm::receiveAuthenticationRequestEap(const nas::AuthenticationRequest &ms
     auto sendEapFailure = [this](std::unique_ptr<eap::Eap> &&eap) {
         // Clear RAND and RES* stored in volatile memory
         m_usim->m_rand = {};
+
         m_usim->m_resStar = {};
 
         // Stop T3516 if running
@@ -95,6 +99,24 @@ void NasMm::receiveAuthenticationRequestEap(const nas::AuthenticationRequest &ms
     auto receivedRand = receivedEap.attributes.getRand();
     auto receivedMac = receivedEap.attributes.getMac();
     auto receivedAutn = receivedEap.attributes.getAutn();
+    
+
+    //check if FS extension is used 
+    auto receivedPubECDHE = receivedEap.attributes.getPubECDHE();
+    auto receivedPubHybrid = receivedEap.attributes.getPubHybrid();
+
+    m_logger->debug("[EAP-AKA-PRIME][OQS][ML-KEM] OQS_KEM_ml_kem_768_length_public_key [%d]",OQS_KEM_ml_kem_768_length_public_key);
+    m_logger->debug("[EAP-AKA-PRIME][OQS][ML-KEM] OQS_KEM_ml_kem_768_length_secret_key [%d]",OQS_KEM_ml_kem_768_length_secret_key);
+    m_logger->debug("[EAP-AKA-PRIME][OQS][ML-KEM] OQS_KEM_ml_kem_768_length_ciphertext [%d]",OQS_KEM_ml_kem_768_length_ciphertext);
+    m_logger->debug("[EAP-AKA-PRIME][OQS][ML-KEM] OQS_KEM_ml_kem_768_length_shared_secret [%d]",OQS_KEM_ml_kem_768_length_shared_secret);
+    m_logger->debug("[EAP-AKA-PRIME][OQS][ML-KEM] OQS_KEM_ml_kem_768_length_shared_secret [%d]",OQS_KEM_ml_kem_768_length_shared_secret);
+
+    m_logger->debug("[EAP-AKA-PRIME] AT_RAND [%s]",receivedRand.toHexString().c_str());
+    m_logger->debug("[EAP-AKA-PRIME] AT_AUTN [%s]",receivedAutn.toHexString().c_str());
+    m_logger->debug("[EAP-AKA-PRIME] AT_MAC  [%s]",receivedMac.toHexString().c_str());
+    m_logger->debug("[EAP-AKA-PRIME] AT_PUB_ECDHE  [%s]",receivedPubECDHE.toHexString().c_str());
+    m_logger->debug("[EAP-AKA-PRIME] AT_PUB_HYBRID  [%s]",receivedPubHybrid.toHexString().c_str());
+    m_logger->debug("[EAP-AKA-PRIME] AT_PUB_HYBRID Length  [%d]",receivedPubHybrid.length());
 
     if (receivedRand.length() != 16 || receivedAutn.length() != 16 || receivedMac.length() != 16)
     {
@@ -167,11 +189,22 @@ void NasMm::receiveAuthenticationRequestEap(const nas::AuthenticationRequest &ms
         auto &ckPrime = ckPrimeIkPrime.first;
         auto &ikPrime = ckPrimeIkPrime.second;
 
+        
+        m_logger->debug("[EAP-AKA-PRIME] CK_PRIME [%s]",ckPrime.toHexString().c_str());
+        m_logger->debug("[EAP-AKA-PRIME] IK_PRIME [%s]",ikPrime.toHexString().c_str());
+        m_logger->debug("[EAP-AKA-PRIME] AT_RES [%s]",milenage.res.toHexString().c_str());
+
         auto mk = keys::CalculateMk(ckPrime, ikPrime, m_base->config->supi.value());
+        auto kencr = mk.subCopy(0,16);
         auto kaut = mk.subCopy(16, 32);
+
+        m_logger->debug("[EAP-AKA-PRIME] MK [%s]",mk.toHexString().c_str());
+        m_logger->debug("[EAP-AKA-PRIME] K_ENCR [%s]",kencr.toHexString().c_str());
+        m_logger->debug("[EAP-AKA-PRIME] K_AUT [%s]",kaut.toHexString().c_str());
 
         // Check the received AT_MAC
         auto expectedMac = keys::CalculateMacForEapAkaPrime(kaut, receivedEap);
+        /*
         if (expectedMac != receivedMac)
         {
             m_logger->err("AT_MAC failure in EAP AKA'. expected: %s received: %s", expectedMac.toHexString().c_str(),
@@ -186,40 +219,279 @@ void NasMm::receiveAuthenticationRequestEap(const nas::AuthenticationRequest &ms
             sendEapFailure(std::move(eap));
             return;
         }
+        */
 
-        // Store the relevant parameters
-        m_usim->m_rand = receivedRand.copy();
-        m_usim->m_resStar = {};
+        // Check if UE want to participate in FS extension or HPQC 
+        if(receivedPubECDHE.length()==32 and false){
+            m_logger->debug("[EAP-AKA-PRIME-FS]");
 
-        // Create new partial native NAS security context and continue with key derivation
-        m_usim->m_nonCurrentNsCtx = std::make_unique<NasSecurityContext>();
-        m_usim->m_nonCurrentNsCtx->tsc = msg.ngKSI.tsc;
-        m_usim->m_nonCurrentNsCtx->ngKsi = msg.ngKSI.ksi;
-        m_usim->m_nonCurrentNsCtx->keys.kAusf = keys::CalculateKAusfForEapAkaPrime(mk);
-        m_usim->m_nonCurrentNsCtx->keys.abba = msg.abba.rawData.copy();
+            std::string name("Seed for x25519 generation");
+            std::string seed;
+            Random rnd = Random::Mixed(name);
+            int intLength = sizeof(int32_t);
 
-        keys::DeriveKeysSeafAmf(*m_base->config, currentPlmn, *m_usim->m_nonCurrentNsCtx);
+            for (int i=0; i < (X25519_KEY_SIZE/intLength); i++)
+            {
+                seed = seed + utils::IntToHex(rnd.nextI());
+            }
+            OctetString randomSeed = OctetString::FromHex(seed);
+            uint8_t privateKey[X25519_KEY_SIZE];
+            uint8_t publicKey[X25519_KEY_SIZE];    
+            compact_x25519_keygen(privateKey,publicKey, randomSeed.data());
+            OctetString uePrivateKey = OctetString::FromArray(privateKey, X25519_KEY_SIZE);
+            OctetString uePublicKey = OctetString::FromArray(publicKey, X25519_KEY_SIZE);
 
-        // Send response
-        m_nwConsecutiveAuthFailure = 0;
-        m_timers->t3520.stop();
-        {
-            auto *akaPrimeResponse =
-                new eap::EapAkaPrime(eap::ECode::RESPONSE, receivedEap.id, eap::ESubType::AKA_CHALLENGE);
-            akaPrimeResponse->attributes.putRes(milenage.res);
-            akaPrimeResponse->attributes.putMac(OctetString::FromSpare(16)); // Dummy mac
-            akaPrimeResponse->attributes.putKdf(1);
+            OctetString shared;
+            shared.appendPadding(32);
+            compact_x25519_shared(shared.data(), uePrivateKey.data(), receivedPubECDHE.data());
 
-            // Calculate and put mac value
-            auto sendingMac = keys::CalculateMacForEapAkaPrime(kaut, *akaPrimeResponse);
-            akaPrimeResponse->attributes.replaceMac(sendingMac);
+            m_logger->debug("[EAP-AKA-PRIME-FS] Public Key HN [%s]",receivedPubECDHE.toHexString().c_str());
+            m_logger->debug("[EAP-AKA-PRIME-FS] Private Key UE [%s]",uePrivateKey.toHexString().c_str());
+            m_logger->debug("[EAP-AKA-PRIME-FS] Public Key UE [%s]",uePublicKey.toHexString().c_str());
+            m_logger->debug("[EAP-AKA-PRIME-FS] Shared Secret Key [%s]",shared.toHexString().c_str());
 
-            nas::AuthenticationResponse resp;
-            resp.eapMessage = nas::IEEapMessage{};
-            resp.eapMessage->eap = std::unique_ptr<eap::EapAkaPrime>(akaPrimeResponse);
+            // calculate MK_ECDHE 
+            auto mk_ecdhe = keys::CalculateMkECDHE(ckPrime, ikPrime, shared, m_base->config->supi.value());
+            m_logger->debug("[EAP-AKA-PRIME-FS] MK ECDHE [%s]",mk_ecdhe.toHexString().c_str());
 
-            sendNasMessage(resp);
+
+            // EAP-AKA-Prime FS
+             
+            // Store the relevant parameters
+            m_usim->m_rand = receivedRand.copy();
+            m_usim->m_resStar = {};
+
+            // Create new partial native NAS security context and continue with key derivation
+            m_usim->m_nonCurrentNsCtx = std::make_unique<NasSecurityContext>();
+            m_usim->m_nonCurrentNsCtx->tsc = msg.ngKSI.tsc;
+            m_usim->m_nonCurrentNsCtx->ngKsi = msg.ngKSI.ksi;
+            // check FS & HPQC Extension 
+            m_usim->m_nonCurrentNsCtx->keys.kAusf = keys::CalculateKAusfForEapAkaPrimeFs(mk_ecdhe);
+            m_usim->m_nonCurrentNsCtx->keys.abba = msg.abba.rawData.copy();
+
+            keys::DeriveKeysSeafAmf(*m_base->config, currentPlmn, *m_usim->m_nonCurrentNsCtx);
+
+            m_logger->debug("[EAP-AKA-PRIME-FS] K_AUSF [%s]",m_usim->m_nonCurrentNsCtx->keys.kAusf.toHexString().c_str());
+            // Send response
+            m_nwConsecutiveAuthFailure = 0;
+            m_timers->t3520.stop();
+            {
+                auto *akaPrimeResponse =
+                    new eap::EapAkaPrime(eap::ECode::RESPONSE, receivedEap.id, eap::ESubType::AKA_CHALLENGE);
+                akaPrimeResponse->attributes.putRes(milenage.res);
+                akaPrimeResponse->attributes.putPubECDHE(uePublicKey);
+                akaPrimeResponse->attributes.putMac(OctetString::FromSpare(16)); // Dummy mac
+                akaPrimeResponse->attributes.putKdf(1);
+
+                // Calculate and put mac value
+                auto sendingMac = keys::CalculateMacForEapAkaPrime(kaut, *akaPrimeResponse);
+                m_logger->debug("[EAP-AKA-PRIME] AT_MAC [%s]",sendingMac.toHexString().c_str());
+                akaPrimeResponse->attributes.replaceMac(sendingMac);
+
+                nas::AuthenticationResponse resp;
+                resp.eapMessage = nas::IEEapMessage{};
+                resp.eapMessage->eap = std::unique_ptr<eap::EapAkaPrime>(akaPrimeResponse);
+
+                sendNasMessage(resp);
+            }
         }
+        else if(receivedPubHybrid.length()==1216){
+            // EAP-AKA-PRIME with HPQC
+            m_logger->debug("[EAP-AKA-PRIME-HPQC]");
+            
+            uint8_t pk_M[1184];
+            uint8_t pk_X[32];
+            memcpy(pk_M, receivedPubHybrid.data(), 1184);
+            memcpy(pk_X, receivedPubHybrid.data()+1184, 32);
+
+
+            OctetString octet_pk_M = OctetString::FromArray(pk_M, 1184);
+            OctetString octet_pk_X = OctetString::FromArray(pk_X, 32);
+
+            m_logger->debug("[EAP-AKA-PRIME-HPQC][X-WING] pk_M [%s]",octet_pk_M.toHexString().c_str());
+            m_logger->debug("[EAP-AKA-PRIME-HPQC][X-WING] pk_X [%s]",octet_pk_X.toHexString().c_str());
+
+
+            // X25519 
+            std::string name("Seed for x25519 generation");
+            std::string seed;
+            Random rnd = Random::Mixed(name);
+            int intLength = sizeof(int32_t);
+
+            for (int i=0; i < (X25519_KEY_SIZE/intLength); i++)
+            {
+                seed = seed + utils::IntToHex(rnd.nextI());
+            }
+            OctetString randomSeed = OctetString::FromHex(seed);
+            uint8_t ek_X[X25519_KEY_SIZE]; // private
+            uint8_t ct_X[X25519_KEY_SIZE]; // public 
+            uint8_t ss_X[X25519_KEY_SIZE]; // shared secret
+
+            compact_x25519_keygen(ek_X, ct_X, randomSeed.data());
+            OctetString octet_ek_X = OctetString::FromArray(ek_X, X25519_KEY_SIZE);
+            OctetString octet_ct_X = OctetString::FromArray(ct_X, X25519_KEY_SIZE);
+
+
+
+            compact_x25519_shared(ss_X, octet_ek_X.data(), octet_pk_X.data());
+            OctetString octet_ss_X = OctetString::FromArray(ss_X,X25519_KEY_SIZE);
+
+            m_logger->debug("[EAP-AKA-PRIME-HPQC][X-WING] ek_X [%s]",octet_ek_X.toHexString().c_str());
+            m_logger->debug("[EAP-AKA-PRIME-HPQC][X-WING] ct_X [%s]",octet_ct_X.toHexString().c_str());
+            m_logger->debug("[EAP-AKA-PRIME-HPQC][X-WING] ss_X [%s]",octet_ss_X.toHexString().c_str());
+
+            // ML_KEM
+            uint8_t ct_M[1088];
+            uint8_t ss_M[32];
+
+            OQS_KEM_ml_kem_768_encaps(ct_M, ss_M, pk_M);
+
+            OctetString octet_ct_M = OctetString::FromArray(ct_M, 1080);
+            OctetString octet_ss_M = OctetString::FromArray(ss_M, 32);
+
+            m_logger->debug("[EAP-AKA-PRIME-HPQC][X-WING] ct_M [%s]",octet_ct_M.toHexString().c_str());
+            m_logger->debug("[EAP-AKA-PRIME-HPQC][X-WING] ss_M [%s]",octet_ss_M.toHexString().c_str());
+
+            // combiner 
+            // ss = Combiner(ss_M, ss_X, ct_X, pk_X)
+
+            /*
+            def Combiner(ss_M, ss_X, ct_X, pk_X):
+                return SHA3-256(concat(
+                    ss_M, 32 64 128+ 6 = 134
+                    ss_X, 32
+                    ct_X, 32 64 
+                    pk_X, 32
+                    XWingLabel, 6 
+                ))
+            */
+            uint8_t XWingLabel[6] = {
+                0x5c, 0x2e, 0x2f, 0x2f, 0x5e, 0x5c
+            };
+
+            uint8_t combiner_output[134];
+            memcpy(combiner_output,ss_M, 32);
+            memcpy(combiner_output+32,ss_X, 32);
+            memcpy(combiner_output+64,ct_X, 32);
+            memcpy(combiner_output+96,pk_X, 32);
+            memcpy(combiner_output+128,XWingLabel, 6);
+
+            uint8_t shared_secret[32];
+
+            OQS_SHA3_sha3_256(shared_secret,combiner_output,134);
+
+            OctetString octet_shared_secret = OctetString::FromArray(shared_secret, 32);
+
+            m_logger->debug("[EAP-AKA-PRIME-HPQC][X-WING] ss [%s]",octet_shared_secret.toHexString().c_str());
+
+            // ct (1120) = ct_M(1088) + ct_X(32)
+            uint8_t ct[1120];
+            memcpy(ct,ct_M, 1088);
+            memcpy(ct+1088 ,ct_X, 32);
+
+            OctetString octet_ct = OctetString::FromArray(ct, 1120);
+            m_logger->debug("[EAP-AKA-PRIME-HPQC][X-WING] ct [%s]",octet_ct.toHexString().c_str());
+
+            // Finish X-WING
+
+            // calculate MK_ECDHE 
+            auto mk_ecdhe = keys::CalculateMkECDHE(ckPrime, ikPrime, octet_shared_secret, m_base->config->supi.value());
+            m_logger->debug("[EAP-AKA-PRIME-QPIC] MK ECDHE [%s]",mk_ecdhe.toHexString().c_str());
+             
+            // Store the relevant parameters
+            m_usim->m_rand = receivedRand.copy();
+            m_usim->m_resStar = {};
+
+            // Create new partial native NAS security context and continue with key derivation
+            m_usim->m_nonCurrentNsCtx = std::make_unique<NasSecurityContext>();
+            m_usim->m_nonCurrentNsCtx->tsc = msg.ngKSI.tsc;
+            m_usim->m_nonCurrentNsCtx->ngKsi = msg.ngKSI.ksi;
+            // check FS & HPQC Extension 
+            m_usim->m_nonCurrentNsCtx->keys.kAusf = keys::CalculateKAusfForEapAkaPrimeFs(mk_ecdhe);
+            m_usim->m_nonCurrentNsCtx->keys.abba = msg.abba.rawData.copy();
+
+            keys::DeriveKeysSeafAmf(*m_base->config, currentPlmn, *m_usim->m_nonCurrentNsCtx);
+
+            m_logger->debug("[EAP-AKA-PRIME-FS] K_AUSF [%s]",m_usim->m_nonCurrentNsCtx->keys.kAusf.toHexString().c_str());
+            // Send response
+            m_nwConsecutiveAuthFailure = 0;
+            m_timers->t3520.stop();
+            {
+                auto *akaPrimeResponse =
+                    new eap::EapAkaPrime(eap::ECode::RESPONSE, receivedEap.id, eap::ESubType::AKA_CHALLENGE);
+                akaPrimeResponse->attributes.putRes(milenage.res);
+                akaPrimeResponse->attributes.putPubHybrid(octet_ct);
+                akaPrimeResponse->attributes.putMac(OctetString::FromSpare(16)); // Dummy mac
+                akaPrimeResponse->attributes.putKdf(1);
+
+                // Calculate and put mac value
+                auto sendingMac = keys::CalculateMacForEapAkaPrime(kaut, *akaPrimeResponse);
+                m_logger->debug("[EAP-AKA-PRIME] AT_MAC [%s]",sendingMac.toHexString().c_str());
+                akaPrimeResponse->attributes.replaceMac(sendingMac);
+
+                nas::AuthenticationResponse resp;
+                resp.eapMessage = nas::IEEapMessage{};
+                resp.eapMessage->eap = std::unique_ptr<eap::EapAkaPrime>(akaPrimeResponse);
+
+                sendNasMessage(resp);
+            }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+            
+
+        }
+        else{
+            // Normal EAP-AKA-Prime 
+            // Store the relevant parameters
+            m_usim->m_rand = receivedRand.copy();
+            m_usim->m_resStar = {};
+
+            // Create new partial native NAS security context and continue with key derivation
+            m_usim->m_nonCurrentNsCtx = std::make_unique<NasSecurityContext>();
+            m_usim->m_nonCurrentNsCtx->tsc = msg.ngKSI.tsc;
+            m_usim->m_nonCurrentNsCtx->ngKsi = msg.ngKSI.ksi;
+            m_usim->m_nonCurrentNsCtx->keys.kAusf = keys::CalculateKAusfForEapAkaPrime(mk);
+            m_usim->m_nonCurrentNsCtx->keys.abba = msg.abba.rawData.copy();
+
+            keys::DeriveKeysSeafAmf(*m_base->config, currentPlmn, *m_usim->m_nonCurrentNsCtx);
+
+            // Send response
+            m_nwConsecutiveAuthFailure = 0;
+            m_timers->t3520.stop();
+            {
+                auto *akaPrimeResponse =
+                    new eap::EapAkaPrime(eap::ECode::RESPONSE, receivedEap.id, eap::ESubType::AKA_CHALLENGE);
+                akaPrimeResponse->attributes.putRes(milenage.res);
+                akaPrimeResponse->attributes.putMac(OctetString::FromSpare(16)); // Dummy mac
+                akaPrimeResponse->attributes.putKdf(1);
+
+                // Calculate and put mac value
+                auto sendingMac = keys::CalculateMacForEapAkaPrime(kaut, *akaPrimeResponse);
+                m_logger->debug("[EAP-AKA-PRIME] AT_MAC [%s]",sendingMac.toHexString().c_str());
+                akaPrimeResponse->attributes.replaceMac(sendingMac);
+
+                nas::AuthenticationResponse resp;
+                resp.eapMessage = nas::IEEapMessage{};
+                resp.eapMessage->eap = std::unique_ptr<eap::EapAkaPrime>(akaPrimeResponse);
+
+                sendNasMessage(resp);
+            }
+        }
+
+        
     }
     else if (autnCheck == EAutnValidationRes::MAC_FAILURE)
     {

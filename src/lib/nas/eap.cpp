@@ -57,6 +57,17 @@ int eap::EapAttributes::getKdf() const
     return val->get2I(0);
 }
 
+int eap::EapAttributes::getKdfFs() const
+{
+    auto &val = attributes[(int)EAttributeType::AT_KDF_FS];
+
+    if (!val.has_value())
+        return 0;
+    if (val->length() != 2)
+        return 0;
+    return val->get2I(0);
+}
+
 OctetString eap::EapAttributes::getKdfInput() const
 {
     auto &val = attributes[(int)EAttributeType::AT_KDF_INPUT];
@@ -70,6 +81,24 @@ OctetString eap::EapAttributes::getKdfInput() const
     return val->subCopy(2, len);
 }
 
+OctetString eap::EapAttributes::getPubECDHE() const
+{
+    auto &val = attributes[(int)EAttributeType::AT_PUB_ECDHE];
+    if (!val.has_value() || val->length() < 2)
+        return {};
+
+    return val->subCopy(2);
+}
+
+OctetString eap::EapAttributes::getPubHybrid() const
+{
+    auto &val = attributes[(int)EAttributeType::AT_PUB_HYBRID];
+    if (!val.has_value() || val->length() < 2)
+        return {};
+
+    return val->subCopy(1);
+}
+
 void eap::EapAttributes::putRes(const OctetString &value)
 {
     putRawAttribute(EAttributeType::AT_RES, OctetString::Concat(OctetString::FromOctet2(value.length() * 8), value));
@@ -78,6 +107,16 @@ void eap::EapAttributes::putRes(const OctetString &value)
 void eap::EapAttributes::putMac(const OctetString &value)
 {
     putRawAttribute(EAttributeType::AT_MAC, OctetString::Concat(OctetString::FromOctet2(0), value));
+}
+
+void eap::EapAttributes::putPubECDHE(const OctetString &value)
+{
+    putRawAttribute(EAttributeType::AT_PUB_ECDHE, OctetString::Concat(OctetString::FromOctet2(0), value));
+}
+
+void eap::EapAttributes::putPubHybrid(const OctetString &value)
+{
+    putRawAttribute(EAttributeType::AT_PUB_HYBRID, OctetString::Concat(OctetString::FromOctet(0), value));
 }
 
 void eap::EapAttributes::replaceMac(const OctetString &value)
@@ -170,9 +209,17 @@ void eap::EncodeEapPdu(OctetString &stream, const eap::Eap &pdu)
             stream.appendOctet2(0);
 
             akaPrime.attributes.forEachEntryOrdered([&stream](EAttributeType key, const OctetString &value) {
-                stream.appendOctet((int)key);
-                stream.appendOctet((value.length() + 2) / 4);
-                stream.append(value);
+                if((int)key ==154){
+                    stream.appendOctet((int)key);
+                    stream.appendOctet2((value.length() + 3) / 4);
+                    stream.append(value);
+                }
+                else{
+                    stream.appendOctet((int)key);
+                    stream.appendOctet((value.length() + 2) / 4);
+                    stream.append(value);
+                }
+                
             });
         }
         else if (pdu.eapType == EEapType::NOTIFICATION)
@@ -220,18 +267,45 @@ std::unique_ptr<eap::Eap> eap::DecodeEapPdu(const OctetView &stream)
         {
             // decode attribute type
             auto t = static_cast<EAttributeType>(stream.readI());
+            
             readBytes += 1;
 
-            // decode attribute length
-            auto attributeLength = stream.readI();
-            readBytes += 1;
+            printf("[EAP_AKA_PRIME] attributeType [%d]\n",(int)t);
+            
+            if(int(t)==154){
+                // AT_PUB_HYBRID
+                // decode attribute length
+                auto attributeLength = stream.read2I();
+                readBytes += 2;
 
-            // decode attribute value
-            auto attributeVal = stream.readOctetString(4 * attributeLength - 2);
-            readBytes += 4 * attributeLength - 2;
+                // decode attribute value
+                auto attributeVal = stream.readOctetString(4 * attributeLength - 3);
+                printf("[EAP_AKA_PRIME] AT_PUB_HYBRID Value[%s]\n",attributeVal.toHexString().c_str());
+                printf("[EAP_AKA_PRIME] AT_PUB_HYBRID Length[%d]\n",attributeVal.length());
+                readBytes += 4 * attributeLength - 3;
+                printf("[EAP_AKA_PRIME] ReadBytes[%d]\n",readBytes);
+                akaPrime->attributes.putRawAttribute(t, std::move(attributeVal));
+            }
+            else{
+                // decode attribute length
+                auto attributeLength = stream.readI();
+                readBytes += 1;
 
-            akaPrime->attributes.putRawAttribute(t, std::move(attributeVal));
+                // decode attribute value
+                auto attributeVal = stream.readOctetString(4 * attributeLength - 2);
+                readBytes += 4 * attributeLength - 2;
+
+                akaPrime->attributes.putRawAttribute(t, std::move(attributeVal));
+            }
+            
+
+            
+
+            
         }
+
+        printf("[EAP_AKA_PRIME] Read Bytes [%d]\n",readBytes);
+        printf("[EAP_AKA_PRIME] InnerLength [%d]\n",innerLength);
 
         if (readBytes != innerLength)
         {

@@ -93,9 +93,27 @@ OctetString CalculateMk(const OctetString &ckPrime, const OctetString &ikPrime, 
     OctetString key = OctetString::Concat(ikPrime, ckPrime);
     OctetString input = OctetString::FromAscii("EAP-AKA'" + supiIdentity.value);
 
+    printf("[EAP-AKA-PRIME] INPUT [%s]\n",input.toHexString().c_str());
+
     // Calculating the 208-octet output
     return crypto::CalculatePrfPrime(key, input, 208);
 }
+
+OctetString CalculateMkECDHE(const OctetString &ckPrime, const OctetString &ikPrime, const OctetString &shared, const Supi &supiIdentity)
+{
+    OctetString ikck = OctetString::Concat(ikPrime, ckPrime);
+    OctetString key = OctetString::Concat(ikck, shared);
+    OctetString input = OctetString::FromAscii("EAP-AKA' FS" + supiIdentity.value);
+
+    printf("[EAP-AKA-PRIME-FS] INPUT [%s]\n",input.toHexString().c_str());
+    printf("[EAP-AKA-PRIME-FS] KEY [%s]\n",key.toHexString().c_str());
+
+
+    // Calculating the 160-octet output
+    return crypto::CalculatePrfPrime(key, input, 160);
+}
+
+
 
 OctetString CalculateMacForEapAkaPrime(const OctetString &kaut, const eap::EapAkaPrime &message)
 {
@@ -120,6 +138,14 @@ OctetString CalculateKAusfForEapAkaPrime(const OctetString &mk)
 {
     // Octets [144...207] are EMSK
     auto emsk = mk.subCopy(144);
+    // The most significant 256 bits of EMSK is K_AUSF
+    return emsk.subCopy(0, 32);
+}
+
+OctetString CalculateKAusfForEapAkaPrimeFs(const OctetString &mk_ecdhe)
+{
+    // Octets [96...159] are EMSK
+    auto emsk = mk_ecdhe.subCopy(96);
     // The most significant 256 bits of EMSK is K_AUSF
     return emsk.subCopy(0, 32);
 }

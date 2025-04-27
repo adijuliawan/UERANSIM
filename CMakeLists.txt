@@ -17,6 +17,14 @@ add_subdirectory(src/lib)
 add_subdirectory(src/gnb)
 add_subdirectory(src/ue)
 
+
+include(FetchContent)
+set(OQS_DIST_BUILD ON CACHE BOOL "" FORCE)
+set(OQS_BUILD_ONLY_LIB ON CACHE BOOL "" FORCE)
+set(OQS_MINIMAL_BUILD "KEM_ml_kem_768" CACHE STRING "" FORCE)
+
+add_subdirectory(external/liboqs)
+
 #################### GNB EXECUTABLE ####################
 
 add_executable(nr-gnb src/gnb.cpp)
@@ -33,7 +41,8 @@ target_link_libraries(nr-gnb gnb)
 #################### UE EXECUTABLE ####################
 
 add_executable(nr-ue src/ue.cpp)
-target_link_libraries(nr-ue pthread)
+target_include_directories(nr-ue PRIVATE ${CMAKE_BINARY_DIR}/external/liboqs/include)
+target_link_libraries(nr-ue pthread oqs)
 target_compile_options(nr-ue PRIVATE -Wall -Wextra -pedantic)
 
 target_link_libraries(nr-ue common-lib)

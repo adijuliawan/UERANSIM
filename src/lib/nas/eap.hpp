@@ -60,6 +60,9 @@ enum class EAttributeType : uint8_t
     AT_IPMS_IND = 137,
     AT_IPMS_RES = 138,
     AT_TRUST_IND = 139,
+    AT_PUB_ECDHE = 152,
+    AT_KDF_FS = 153,
+    AT_PUB_HYBRID = 154
 };
 
 enum class ECode
@@ -143,7 +146,10 @@ class EapAttributes
     [[nodiscard]] OctetString getAutn() const;
     [[nodiscard]] int getClientErrorCode() const;
     [[nodiscard]] int getKdf() const;
+    [[nodiscard]] int getKdfFs() const;
     [[nodiscard]] OctetString getKdfInput() const;
+    [[nodiscard]] OctetString getPubECDHE() const;
+    [[nodiscard]] OctetString getPubHybrid() const;
 
   public:
     void putRes(const OctetString &value);
@@ -152,6 +158,9 @@ class EapAttributes
     void putKdf(int value);
     void putClientErrorCode(int code);
     void putAuts(OctetString &&auts);
+    void putPubECDHE(const OctetString &value);
+    void putPubHybrid(const OctetString &value);
+
 
   public:
     void forEachEntry(const std::function<void(EAttributeType, const OctetString &)> &fun) const;

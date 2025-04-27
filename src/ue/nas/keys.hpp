@@ -51,6 +51,11 @@ std::pair<OctetString, OctetString> CalculateCkPrimeIkPrime(const OctetString &c
 OctetString CalculateMk(const OctetString &ckPrime, const OctetString &ikPrime, const Supi &supiIdentity);
 
 /**
+ * Calculates mk for EAP-AKA'-FS according to given parameters as specified in RFC 9678.
+ */
+ OctetString CalculateMkECDHE(const OctetString &ckPrime, const OctetString &ikPrime, const OctetString &shared, const Supi &supiIdentity);
+
+/**
  * Calculates MAC for EAP-AKA' according to given parameters.
  */
 OctetString CalculateMacForEapAkaPrime(const OctetString &kaut, const eap::EapAkaPrime &message);
@@ -59,6 +64,11 @@ OctetString CalculateMacForEapAkaPrime(const OctetString &kaut, const eap::EapAk
  * Calculates K_AUSF for EAP-AKA' according to given parameters as specified in 3GPP TS 33.501 Annex F.
  */
 OctetString CalculateKAusfForEapAkaPrime(const OctetString &mk);
+
+/**
+ * Calculates K_AUSF for EAP-AKA' FS according to given parameters as specified in RFC 9678.
+ */
+ OctetString CalculateKAusfForEapAkaPrimeFs(const OctetString &mk_ecdhe);
 
 /**
  * Calculates RES* according to given parameters as specified in 3GPP TS 33.501
