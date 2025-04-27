@@ -104,19 +104,21 @@ void NasMm::receiveAuthenticationRequestEap(const nas::AuthenticationRequest &ms
     //check if FS extension is used 
     auto receivedPubECDHE = receivedEap.attributes.getPubECDHE();
     auto receivedPubHybrid = receivedEap.attributes.getPubHybrid();
+    auto receivedPubKem = receivedEap.attributes.getPubKem();
 
-    m_logger->debug("[EAP-AKA-PRIME][OQS][ML-KEM] OQS_KEM_ml_kem_768_length_public_key [%d]",OQS_KEM_ml_kem_768_length_public_key);
-    m_logger->debug("[EAP-AKA-PRIME][OQS][ML-KEM] OQS_KEM_ml_kem_768_length_secret_key [%d]",OQS_KEM_ml_kem_768_length_secret_key);
-    m_logger->debug("[EAP-AKA-PRIME][OQS][ML-KEM] OQS_KEM_ml_kem_768_length_ciphertext [%d]",OQS_KEM_ml_kem_768_length_ciphertext);
-    m_logger->debug("[EAP-AKA-PRIME][OQS][ML-KEM] OQS_KEM_ml_kem_768_length_shared_secret [%d]",OQS_KEM_ml_kem_768_length_shared_secret);
-    m_logger->debug("[EAP-AKA-PRIME][OQS][ML-KEM] OQS_KEM_ml_kem_768_length_shared_secret [%d]",OQS_KEM_ml_kem_768_length_shared_secret);
+    m_logger->debug("[EAP-AKA-PRIME][PQC][ML-KEM] OQS_KEM_ml_kem_768_length_public_key [%d]",OQS_KEM_ml_kem_768_length_public_key);
+    m_logger->debug("[EAP-AKA-PRIME][PQC][ML-KEM] OQS_KEM_ml_kem_768_length_secret_key [%d]",OQS_KEM_ml_kem_768_length_secret_key);
+    m_logger->debug("[EAP-AKA-PRIME][PQC][ML-KEM] OQS_KEM_ml_kem_768_length_ciphertext [%d]",OQS_KEM_ml_kem_768_length_ciphertext);
+    m_logger->debug("[EAP-AKA-PRIME][PQC][ML-KEM] OQS_KEM_ml_kem_768_length_shared_secret [%d]",OQS_KEM_ml_kem_768_length_shared_secret);
+    m_logger->debug("[EAP-AKA-PRIME][PQC][ML-KEM] OQS_KEM_ml_kem_768_length_shared_secret [%d]",OQS_KEM_ml_kem_768_length_shared_secret);
 
     m_logger->debug("[EAP-AKA-PRIME] AT_RAND [%s]",receivedRand.toHexString().c_str());
     m_logger->debug("[EAP-AKA-PRIME] AT_AUTN [%s]",receivedAutn.toHexString().c_str());
     m_logger->debug("[EAP-AKA-PRIME] AT_MAC  [%s]",receivedMac.toHexString().c_str());
-    m_logger->debug("[EAP-AKA-PRIME] AT_PUB_ECDHE  [%s]",receivedPubECDHE.toHexString().c_str());
-    m_logger->debug("[EAP-AKA-PRIME] AT_PUB_HYBRID  [%s]",receivedPubHybrid.toHexString().c_str());
-    m_logger->debug("[EAP-AKA-PRIME] AT_PUB_HYBRID Length  [%d]",receivedPubHybrid.length());
+    m_logger->debug("[EAP-AKA-PRIME][FS] AT_PUB_ECDHE  [%s]",receivedPubECDHE.toHexString().c_str());
+    m_logger->debug("[EAP-AKA-PRIME][HPQC] AT_PUB_HYBRID  [%s]",receivedPubHybrid.toHexString().c_str());
+    m_logger->debug("[EAP-AKA-PRIME][PQC] AT_PUB_KEM  [%s]",receivedPubKem.toHexString().c_str());
+    m_logger->debug("[EAP-AKA-PRIME][PQC] AT_PUB_KEM Length  [%d]",receivedPubKem.length());
 
     if (receivedRand.length() != 16 || receivedAutn.length() != 16 || receivedMac.length() != 16)
     {
@@ -396,7 +398,7 @@ void NasMm::receiveAuthenticationRequestEap(const nas::AuthenticationRequest &ms
 
             // calculate MK_ECDHE 
             auto mk_ecdhe = keys::CalculateMkECDHE(ckPrime, ikPrime, octet_shared_secret, m_base->config->supi.value());
-            m_logger->debug("[EAP-AKA-PRIME-QPIC] MK ECDHE [%s]",mk_ecdhe.toHexString().c_str());
+            m_logger->debug("[EAP-AKA-PRIME-HPQC] MK ECDHE [%s]",mk_ecdhe.toHexString().c_str());
              
             // Store the relevant parameters
             m_usim->m_rand = receivedRand.copy();
@@ -435,22 +437,65 @@ void NasMm::receiveAuthenticationRequestEap(const nas::AuthenticationRequest &ms
 
                 sendNasMessage(resp);
             }
+        }
+        else if(receivedPubKem.length()==1184){
+            // PQC 
+            m_logger->debug("[EAP-AKA-PRIME][PQC]");
 
+            uint8_t ct[1088];
+            uint8_t ss[32];
 
+            OQS_KEM_ml_kem_768_encaps(ct, ss, receivedPubKem.data());
 
+            OctetString octet_ct = OctetString::FromArray(ct, 1088);
+            OctetString octet_ss = OctetString::FromArray(ss, 32);
 
+            m_logger->debug("[EAP-AKA-PRIME][PQC][ML_KEM] ct [%s]",octet_ct.toHexString().c_str());
+            m_logger->debug("[EAP-AKA-PRIME][PQC][ML_KEM] ss [%s]",octet_ss.toHexString().c_str());
 
+            // calculate MK_PQ_SHARED_SECRET
+            auto mk_pq_shared_secret = keys::CalculateMkPqSharedSecret(ckPrime, ikPrime, octet_ct, octet_ss, m_base->config->supi.value());
 
+            m_logger->debug("[EAP-AKA-PRIME][PQC][ML_KEM] MK_PQ_SHARED_SECRET [%s]",mk_pq_shared_secret.toHexString().c_str());
 
+            // Store the relevant parameters
+            m_usim->m_rand = receivedRand.copy();
+            m_usim->m_resStar = {};
 
+            // Create new partial native NAS security context and continue with key derivation
+            m_usim->m_nonCurrentNsCtx = std::make_unique<NasSecurityContext>();
+            m_usim->m_nonCurrentNsCtx->tsc = msg.ngKSI.tsc;
+            m_usim->m_nonCurrentNsCtx->ngKsi = msg.ngKSI.ksi;
+            // check FS & HPQC & PQC Extension 
+            m_usim->m_nonCurrentNsCtx->keys.kAusf = keys::CalculateKAusfForEapAkaPrimeFs(mk_pq_shared_secret);
+            m_usim->m_nonCurrentNsCtx->keys.abba = msg.abba.rawData.copy();
 
+            keys::DeriveKeysSeafAmf(*m_base->config, currentPlmn, *m_usim->m_nonCurrentNsCtx);
 
+            m_logger->debug("[EAP-AKA-PRIME][PQC][ML_KEM] K_AUSF [%s]",m_usim->m_nonCurrentNsCtx->keys.kAusf.toHexString().c_str());
+            // Send response
+            m_nwConsecutiveAuthFailure = 0;
+            m_timers->t3520.stop();
+            {
+                auto *akaPrimeResponse =
+                    new eap::EapAkaPrime(eap::ECode::RESPONSE, receivedEap.id, eap::ESubType::AKA_CHALLENGE);
+                akaPrimeResponse->attributes.putRes(milenage.res);
+                akaPrimeResponse->attributes.putKemCt(octet_ct);
+                akaPrimeResponse->attributes.putMac(OctetString::FromSpare(16)); // Dummy mac
+                akaPrimeResponse->attributes.putKdf(1);
 
+                // Calculate and put mac value
+                auto sendingMac = keys::CalculateMacForEapAkaPrime(kaut, *akaPrimeResponse);
+                m_logger->debug("[EAP-AKA-PRIME] AT_MAC [%s]",sendingMac.toHexString().c_str());
+                akaPrimeResponse->attributes.replaceMac(sendingMac);
 
+                nas::AuthenticationResponse resp;
+                resp.eapMessage = nas::IEEapMessage{};
+                resp.eapMessage->eap = std::unique_ptr<eap::EapAkaPrime>(akaPrimeResponse);
 
+                sendNasMessage(resp);
+            }
 
-
-            
 
         }
         else{

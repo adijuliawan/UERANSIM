@@ -112,6 +112,20 @@ OctetString CalculateMkECDHE(const OctetString &ckPrime, const OctetString &ikPr
     // Calculating the 160-octet output
     return crypto::CalculatePrfPrime(key, input, 160);
 }
+OctetString CalculateMkPqSharedSecret(const OctetString &ckPrime, const OctetString &ikPrime, const OctetString &ct,const OctetString &ss, const Supi &supiIdentity)
+{
+    OctetString ikck = OctetString::Concat(ikPrime, ckPrime);
+    OctetString key = OctetString::Concat(ikck, ss);
+    OctetString input_first = OctetString::FromAscii("EAP-AKA' FS" + supiIdentity.value);
+    OctetString input = OctetString::Concat(input_first, ct);
+
+    printf("[EAP-AKA-PRIME][PQC][PRF'] Input [%s]\n",input.toHexString().c_str());
+    printf("[EAP-AKA-PRIME][PQC][PRF'] Key [%s]\n",key.toHexString().c_str());
+
+    // Calculating the 160-octet output
+    return crypto::CalculatePrfPrime(key, input, 160);
+}
+
 
 
 

@@ -53,8 +53,12 @@ OctetString CalculateMk(const OctetString &ckPrime, const OctetString &ikPrime, 
 /**
  * Calculates mk for EAP-AKA'-FS according to given parameters as specified in RFC 9678.
  */
- OctetString CalculateMkECDHE(const OctetString &ckPrime, const OctetString &ikPrime, const OctetString &shared, const Supi &supiIdentity);
+OctetString CalculateMkECDHE(const OctetString &ckPrime, const OctetString &ikPrime, const OctetString &shared, const Supi &supiIdentity);
 
+/**
+ * Calculates mk for EAP-AKA'-PQC according to given parameters as specified in RFC TBD.
+ */
+OctetString CalculateMkPqSharedSecret(const OctetString &ckPrime, const OctetString &ikPrime, const OctetString &ct,const OctetString &ss, const Supi &supiIdentity);
 /**
  * Calculates MAC for EAP-AKA' according to given parameters.
  */

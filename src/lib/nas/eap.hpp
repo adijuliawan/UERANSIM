@@ -62,7 +62,9 @@ enum class EAttributeType : uint8_t
     AT_TRUST_IND = 139,
     AT_PUB_ECDHE = 152,
     AT_KDF_FS = 153,
-    AT_PUB_HYBRID = 154
+    AT_PUB_HYBRID = 154,
+    AT_PUB_KEM = 155,
+    AT_KEM_CT = 156
 };
 
 enum class ECode
@@ -150,6 +152,7 @@ class EapAttributes
     [[nodiscard]] OctetString getKdfInput() const;
     [[nodiscard]] OctetString getPubECDHE() const;
     [[nodiscard]] OctetString getPubHybrid() const;
+    [[nodiscard]] OctetString getPubKem() const;
 
   public:
     void putRes(const OctetString &value);
@@ -160,6 +163,7 @@ class EapAttributes
     void putAuts(OctetString &&auts);
     void putPubECDHE(const OctetString &value);
     void putPubHybrid(const OctetString &value);
+    void putKemCt(const OctetString &value);
 
 
   public:
