@@ -1,0 +1,39 @@
+#---------------------------------------------------------------------
+# BUILDER IMAGE
+#---------------------------------------------------------------------
+FROM ubuntu:jammy as ueransim-eap-builder
+
+RUN apt-get update -y && apt-get upgrade -y &&\
+    apt install -y make gcc g++ libsctp-dev lksctp-tools\
+    iproute2 wget software-properties-common git openssl libssl-dev
+
+RUN wget -O - https://apt.kitware.com/keys/kitware-archive-latest.asc 2>/dev/null\
+    | gpg --dearmor - | tee /etc/apt/trusted.gpg.d/kitware.gpg >/dev/null\
+    && apt-add-repository 'deb https://apt.kitware.com/ubuntu/ jammy main'\
+    && apt update && apt install -y cmake
+    
+RUN cmake --version
+
+WORKDIR /UERANSIM
+COPY . /UERANSIM
+
+RUN git submodule update --init --recursive
+
+RUN make 
+
+#---------------------------------------------------------------------
+# TARGET IMAGE
+#---------------------------------------------------------------------
+FROM ubuntu:jammy as ueransim-eap
+
+RUN apt update && apt install -y iproute2 iputils-ping net-tools\
+    iperf3 libsctp-dev lksctp-tools
+
+WORKDIR /ueransim/etc
+COPY --from=ueransim-eap-builder /UERANSIM/docker/custom*.yaml  /ueransim/etc/
+
+WORKDIR /ueransim/bin
+COPY --from=ueransim-eap-builder /UERANSIM/build/*  /ueransim/bin/
+COPY --from=ueransim-eap-builder /UERANSIM/docker/entrypoint.sh . 
+
+ENTRYPOINT ["/ueransim/bin/entrypoint.sh"]
