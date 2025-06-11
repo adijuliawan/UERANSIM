@@ -224,7 +224,7 @@ void NasMm::receiveAuthenticationRequestEap(const nas::AuthenticationRequest &ms
         */
 
         // Check if UE want to participate in FS extension or HPQC 
-        if(receivedPubECDHE.length()==32 and false){
+        if(receivedPubECDHE.length()==32){
             m_logger->debug("[EAP-AKA-PRIME-FS]");
 
             std::string name("Seed for x25519 generation");
