@@ -1,7 +1,7 @@
 #---------------------------------------------------------------------
 # BUILDER IMAGE
 #---------------------------------------------------------------------
-FROM ubuntu:jammy as ueransim-eap-builder
+FROM ubuntu:jammy AS ueransim-eap-builder
 
 RUN apt-get update -y && apt-get upgrade -y &&\
     apt install -y make gcc g++ libsctp-dev lksctp-tools\
@@ -24,7 +24,7 @@ RUN make
 #---------------------------------------------------------------------
 # TARGET IMAGE
 #---------------------------------------------------------------------
-FROM ubuntu:jammy as ueransim-eap
+FROM ubuntu:jammy AS ueransim-eap
 
 RUN apt update && apt install -y iproute2 iputils-ping net-tools\
     iperf3 libsctp-dev lksctp-tools
