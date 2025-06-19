@@ -283,21 +283,15 @@ std::unique_ptr<eap::Eap> eap::DecodeEapPdu(const OctetView &stream)
             auto t = static_cast<EAttributeType>(stream.readI());
             
             readBytes += 1;
-
-            printf("[EAP_AKA_PRIME] attributeType [%d]\n",(int)t);
             
             if(int(t)==154){
                 // AT_PUB_HYBRID 
                 // decode attribute length
                 auto attributeLength = stream.read2I();
                 readBytes += 2;
-
                 // decode attribute value
                 auto attributeVal = stream.readOctetString(4 * attributeLength - 3);
-                printf("[EAP_AKA_PRIME] AT_PUB_HYBRID Value[%s]\n",attributeVal.toHexString().c_str());
-                printf("[EAP_AKA_PRIME] AT_PUB_HYBRID Length[%d]\n",attributeVal.length());
                 readBytes += 4 * attributeLength - 3;
-                printf("[EAP_AKA_PRIME] ReadBytes[%d]\n",readBytes);
                 akaPrime->attributes.putRawAttribute(t, std::move(attributeVal));
             }
             else if(int(t)==155){
@@ -305,13 +299,9 @@ std::unique_ptr<eap::Eap> eap::DecodeEapPdu(const OctetView &stream)
                 // decode attribute length
                 auto attributeLength = stream.read2I();
                 readBytes += 2;
-
                 // decode attribute value
                 auto attributeVal = stream.readOctetString(4 * attributeLength - 3);
-                printf("[EAP_AKA_PRIME][PQC] AT_PUB_KEM Value[%s]\n",attributeVal.toHexString().c_str());
-                printf("[EAP_AKA_PRIME][PQC] AT_PUB_KEM Length[%d]\n",attributeVal.length());
                 readBytes += 4 * attributeLength - 3;
-                printf("[EAP_AKA_PRIME][PQC] ReadBytes[%d]\n",readBytes);
                 akaPrime->attributes.putRawAttribute(t, std::move(attributeVal));
             }
             else{
@@ -326,14 +316,7 @@ std::unique_ptr<eap::Eap> eap::DecodeEapPdu(const OctetView &stream)
                 akaPrime->attributes.putRawAttribute(t, std::move(attributeVal));
             }
             
-
-            
-
-            
         }
-
-        printf("[EAP_AKA_PRIME] Read Bytes [%d]\n",readBytes);
-        printf("[EAP_AKA_PRIME] InnerLength [%d]\n",innerLength);
 
         if (readBytes != innerLength)
         {

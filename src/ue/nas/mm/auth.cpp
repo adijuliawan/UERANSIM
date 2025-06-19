@@ -106,19 +106,12 @@ void NasMm::receiveAuthenticationRequestEap(const nas::AuthenticationRequest &ms
     auto receivedPubHybrid = receivedEap.attributes.getPubHybrid();
     auto receivedPubKem = receivedEap.attributes.getPubKem();
 
-    m_logger->debug("[EAP-AKA-PRIME][PQC][ML-KEM] OQS_KEM_ml_kem_768_length_public_key [%d]",OQS_KEM_ml_kem_768_length_public_key);
-    m_logger->debug("[EAP-AKA-PRIME][PQC][ML-KEM] OQS_KEM_ml_kem_768_length_secret_key [%d]",OQS_KEM_ml_kem_768_length_secret_key);
-    m_logger->debug("[EAP-AKA-PRIME][PQC][ML-KEM] OQS_KEM_ml_kem_768_length_ciphertext [%d]",OQS_KEM_ml_kem_768_length_ciphertext);
-    m_logger->debug("[EAP-AKA-PRIME][PQC][ML-KEM] OQS_KEM_ml_kem_768_length_shared_secret [%d]",OQS_KEM_ml_kem_768_length_shared_secret);
-    m_logger->debug("[EAP-AKA-PRIME][PQC][ML-KEM] OQS_KEM_ml_kem_768_length_shared_secret [%d]",OQS_KEM_ml_kem_768_length_shared_secret);
-
     m_logger->debug("[EAP-AKA-PRIME] AT_RAND [%s]",receivedRand.toHexString().c_str());
     m_logger->debug("[EAP-AKA-PRIME] AT_AUTN [%s]",receivedAutn.toHexString().c_str());
     m_logger->debug("[EAP-AKA-PRIME] AT_MAC  [%s]",receivedMac.toHexString().c_str());
     m_logger->debug("[EAP-AKA-PRIME][FS] AT_PUB_ECDHE  [%s]",receivedPubECDHE.toHexString().c_str());
     m_logger->debug("[EAP-AKA-PRIME][HPQC] AT_PUB_HYBRID  [%s]",receivedPubHybrid.toHexString().c_str());
-    m_logger->debug("[EAP-AKA-PRIME][PQC] AT_PUB_KEM  [%s]",receivedPubKem.toHexString().c_str());
-    m_logger->debug("[EAP-AKA-PRIME][PQC] AT_PUB_KEM Length  [%d]",receivedPubKem.length());
+    m_logger->debug("[EAP-AKA-PRIME][PQ KEM] AT_PUB_KEM  [%s]",receivedPubKem.toHexString().c_str());
 
     if (receivedRand.length() != 16 || receivedAutn.length() != 16 || receivedMac.length() != 16)
     {
@@ -223,7 +216,7 @@ void NasMm::receiveAuthenticationRequestEap(const nas::AuthenticationRequest &ms
         }
         */
 
-        // Check if UE want to participate in FS extension or HPQC 
+        // Check if UE want to participate in FS extension or not 
         if(receivedPubECDHE.length()==32){
             m_logger->debug("[EAP-AKA-PRIME-FS]");
 
@@ -258,7 +251,6 @@ void NasMm::receiveAuthenticationRequestEap(const nas::AuthenticationRequest &ms
 
 
             // EAP-AKA-Prime FS
-             
             // Store the relevant parameters
             m_usim->m_rand = receivedRand.copy();
             m_usim->m_resStar = {};
@@ -306,13 +298,11 @@ void NasMm::receiveAuthenticationRequestEap(const nas::AuthenticationRequest &ms
             memcpy(pk_M, receivedPubHybrid.data(), 1184);
             memcpy(pk_X, receivedPubHybrid.data()+1184, 32);
 
-
             OctetString octet_pk_M = OctetString::FromArray(pk_M, 1184);
             OctetString octet_pk_X = OctetString::FromArray(pk_X, 32);
 
             m_logger->debug("[EAP-AKA-PRIME-HPQC][X-WING] pk_M [%s]",octet_pk_M.toHexString().c_str());
             m_logger->debug("[EAP-AKA-PRIME-HPQC][X-WING] pk_X [%s]",octet_pk_X.toHexString().c_str());
-
 
             // X25519 
             std::string name("Seed for x25519 generation");
@@ -333,8 +323,6 @@ void NasMm::receiveAuthenticationRequestEap(const nas::AuthenticationRequest &ms
             OctetString octet_ek_X = OctetString::FromArray(ek_X, X25519_KEY_SIZE);
             OctetString octet_ct_X = OctetString::FromArray(ct_X, X25519_KEY_SIZE);
 
-
-
             compact_x25519_shared(ss_X, octet_ek_X.data(), octet_pk_X.data());
             OctetString octet_ss_X = OctetString::FromArray(ss_X,X25519_KEY_SIZE);
 
@@ -354,19 +342,6 @@ void NasMm::receiveAuthenticationRequestEap(const nas::AuthenticationRequest &ms
             m_logger->debug("[EAP-AKA-PRIME-HPQC][X-WING] ct_M [%s]",octet_ct_M.toHexString().c_str());
             m_logger->debug("[EAP-AKA-PRIME-HPQC][X-WING] ss_M [%s]",octet_ss_M.toHexString().c_str());
 
-            // combiner 
-            // ss = Combiner(ss_M, ss_X, ct_X, pk_X)
-
-            /*
-            def Combiner(ss_M, ss_X, ct_X, pk_X):
-                return SHA3-256(concat(
-                    ss_M, 32 64 128+ 6 = 134
-                    ss_X, 32
-                    ct_X, 32 64 
-                    pk_X, 32
-                    XWingLabel, 6 
-                ))
-            */
             uint8_t XWingLabel[6] = {
                 0x5c, 0x2e, 0x2f, 0x2f, 0x5e, 0x5c
             };
@@ -386,7 +361,6 @@ void NasMm::receiveAuthenticationRequestEap(const nas::AuthenticationRequest &ms
 
             m_logger->debug("[EAP-AKA-PRIME-HPQC][X-WING] ss [%s]",octet_shared_secret.toHexString().c_str());
 
-            // ct (1120) = ct_M(1088) + ct_X(32)
             uint8_t ct[1120];
             memcpy(ct,ct_M, 1088);
             memcpy(ct+1088 ,ct_X, 32);
@@ -440,7 +414,7 @@ void NasMm::receiveAuthenticationRequestEap(const nas::AuthenticationRequest &ms
         }
         else if(receivedPubKem.length()==1184){
             // PQC 
-            m_logger->debug("[EAP-AKA-PRIME][PQC]");
+            m_logger->debug("[EAP-AKA-PRIME][PQ KEM]");
 
             uint8_t ct[1088];
             uint8_t ss[32];
@@ -450,13 +424,13 @@ void NasMm::receiveAuthenticationRequestEap(const nas::AuthenticationRequest &ms
             OctetString octet_ct = OctetString::FromArray(ct, 1088);
             OctetString octet_ss = OctetString::FromArray(ss, 32);
 
-            m_logger->debug("[EAP-AKA-PRIME][PQC][ML_KEM] ct [%s]",octet_ct.toHexString().c_str());
-            m_logger->debug("[EAP-AKA-PRIME][PQC][ML_KEM] ss [%s]",octet_ss.toHexString().c_str());
+            m_logger->debug("[EAP-AKA-PRIME][PQ KEM][ML_KEM] ct [%s]",octet_ct.toHexString().c_str());
+            m_logger->debug("[EAP-AKA-PRIME][PQ KEM][ML_KEM] ss [%s]",octet_ss.toHexString().c_str());
 
             // calculate MK_PQ_SHARED_SECRET
             auto mk_pq_shared_secret = keys::CalculateMkPqSharedSecret(ckPrime, ikPrime, octet_ct, octet_ss, m_base->config->supi.value());
 
-            m_logger->debug("[EAP-AKA-PRIME][PQC][ML_KEM] MK_PQ_SHARED_SECRET [%s]",mk_pq_shared_secret.toHexString().c_str());
+            m_logger->debug("[EAP-AKA-PRIME][PQ KEM][ML_KEM] MK_PQ_SHARED_SECRET [%s]",mk_pq_shared_secret.toHexString().c_str());
 
             // Store the relevant parameters
             m_usim->m_rand = receivedRand.copy();
