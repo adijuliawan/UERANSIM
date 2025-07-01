@@ -32,6 +32,7 @@ class Usim
     std::unique_ptr<NasSecurityContext> m_nonCurrentNsCtx{};
     OctetString m_rand{};
     OctetString m_resStar{};
+    OctetString m_privateECIES{};
     std::unique_ptr<SqnManager> m_sqnMng{};
 
     // Others

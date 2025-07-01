@@ -141,6 +141,8 @@ std::string NasMm::generateSUCIProfileA(const std::string &imsi, const OctetStri
     uint8_t publicKey[X25519_KEY_SIZE];    
     compact_x25519_keygen(privateKey,publicKey, randomSeed.data());
 
+    m_usim->m_privateECIES = OctetString::FromArray(privateKey, X25519_KEY_SIZE);
+
     OctetString uePrivateKey = OctetString::FromArray(privateKey, X25519_KEY_SIZE);
     OctetString uePublicKey = OctetString::FromArray(publicKey, X25519_KEY_SIZE);
     OctetString shared;

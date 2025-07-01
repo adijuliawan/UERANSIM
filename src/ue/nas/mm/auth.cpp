@@ -337,19 +337,49 @@ void NasMm::receiveAuthenticationRequest5gAka(const nas::AuthenticationRequest &
 
     EAutnValidationRes autnCheck = EAutnValidationRes::OK;
 
+    //print eph private key m_ECIES
+    m_logger->debug("Private Key ECIES [%s]", m_usim->m_privateECIES.toHexString().c_str());
+    m_logger->debug("RAND [%s]", rand.toHexString().c_str());
+
+    // The SIM computes a Diffie–Hellman key DHK = r · RAND
+    OctetString DHK;
+    DHK.appendPadding(32);
+    compact_x25519_shared(DHK.data(), m_usim->m_privateECIES.data(), rand.data());
+
+    auto dhk = DHK.subCopy(0,16);
+
+    m_logger->debug("AUTN [%s]", autn.toHexString().c_str());
+    m_logger->debug("RAND [%s]", rand.toHexString().c_str());
+    m_logger->debug("DHK [%s]", DHK.toHexString().c_str());
+    m_logger->debug("DHK 16 [%s]", dhk.toHexString().c_str());
+
+    //Run the SIM card command AUTHENTICATE(RAND, DHK, AUTN)
+    auto rand_xor_dhk = OctetString::Xor(rand, dhk);
+
+    m_logger->debug("RAND XOR DHK [%s]", rand_xor_dhk.toHexString().c_str());
+
+
+
     // If the received RAND is same with store stored RAND, bypass AUTN validation
     // NOTE: Not completely sure if this is correct and the spec meant this. But in worst case, synchronisation failure
     //  happens, and hopefully that can be restored with the normal resynchronization procedure.
     if (m_usim->m_rand != rand)
     {
-        autnCheck = validateAutn(rand, autn);
+        //autnCheck = validateAutn(rand_xor_dhk, autn);
+        autnCheck = EAutnValidationRes::OK;
         m_timers->t3516.start();
     }
 
-    if (autnCheck == EAutnValidationRes::OK)
+    if (autnCheck == EAutnValidationRes::OK )
     {
+
+       
+
+       
+        
+
         // Calculate milenage
-        auto milenage = calculateMilenage(m_usim->m_sqnMng->getSqn(), rand, false);
+        auto milenage = calculateMilenage(m_usim->m_sqnMng->getSqn(), dhk, false);
         auto ckIk = OctetString::Concat(milenage.ck, milenage.ik);
         auto sqnXorAk = OctetString::Xor(m_usim->m_sqnMng->getSqn(), milenage.ak);
         auto snn = keys::ConstructServingNetworkName(currentPLmn);
@@ -365,6 +395,9 @@ void NasMm::receiveAuthenticationRequest5gAka(const nas::AuthenticationRequest &
         m_usim->m_nonCurrentNsCtx->keys.kAusf = keys::CalculateKAusfFor5gAka(milenage.ck, milenage.ik, snn, sqnXorAk);
         m_usim->m_nonCurrentNsCtx->keys.kAkma = keys::CalculateAkmaKey(m_usim->m_nonCurrentNsCtx->keys.kAusf, m_base->config->supi.value());
         m_usim->m_nonCurrentNsCtx->keys.abba = msg.abba.rawData.copy();
+
+        // print kausf
+         m_logger->debug("KAUSF [%s]",  m_usim->m_nonCurrentNsCtx->keys.kAusf.toHexString().c_str());
 
         keys::DeriveKeysSeafAmf(*m_base->config, currentPLmn, *m_usim->m_nonCurrentNsCtx);
 
